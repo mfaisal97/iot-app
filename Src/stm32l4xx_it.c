@@ -58,9 +58,15 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN EV */
+#include "cmsis_os.h"
+extern int init_khalas;
+extern uint8_t s[16];
+extern osThreadId_t ReceiveWiFiATHandle;
+extern osThreadId_t SendWifiATHandle;
 
 /* USER CODE END EV */
 
@@ -172,6 +178,29 @@ void TIM1_UP_TIM16_IRQHandler(void)
   /* USER CODE BEGIN TIM1_UP_TIM16_IRQn 1 */
 
   /* USER CODE END TIM1_UP_TIM16_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USART1 global interrupt.
+  */
+void USART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART1_IRQn 0 */
+
+  /* USER CODE END USART1_IRQn 0 */
+  HAL_UART_IRQHandler(&huart1);
+  /* USER CODE BEGIN USART1_IRQn 1 */
+	if (init_khalas){
+		HAL_UART_Receive_IT(&huart1, (uint8_t *)s, sizeof(s));
+		/*
+		if( xQueueSendToBack(RQHandle, s, 500) != pdPASS ) {
+		}else {
+			
+		}
+		*/
+		xTaskResumeFromISR(ReceiveWiFiATHandle);
+	}
+  /* USER CODE END USART1_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */
