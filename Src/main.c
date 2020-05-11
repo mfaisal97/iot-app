@@ -109,8 +109,36 @@ int init_khalas = 0;
 uint8_t s[16];
 
 uint8_t termSign[1] = ";";
+uint8_t commandStart[2] = "AT";
+uint8_t ledArgument[3] = "LED";
+uint8_t timeArgument[4] = "TIME";
+
 uint8_t orderSign[1] = "|";
 char newLine[2] = "\n\r";
+
+int matchNextStr(uint8_t* str, int sz, uint8_t* str2, int sz2){
+	for (int i = 0; i < sz2; i++){
+		if (i > sz || str[i]!= str2[i]){	
+			return -1;
+		}
+	}
+	return sz2;
+}
+
+int getNextOpSign(uint8_t* str, int sz, int* res){
+	for (int i = 0; i < sz; i++){
+		if(str[i] == '-'){
+			*res  = 0;
+			return i;
+		}else if(str[i]>= '+'){
+			*res = 1;
+			return i;
+		}else if(str[i] != ' ' && str[i] != '\t'){
+			return -1;
+		}
+	}
+	return -1;
+}	
 
 
 uint8_t hexToAscii(uint8_t n)//4-bit hex value converted to an ascii character
@@ -384,7 +412,7 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  /* Infinite loop */
+  /* Infinite loop */	
 	uint8_t innerBuffer[32];
 	int seeker = 0;
   for(;;)
@@ -398,9 +426,26 @@ void StartDefaultTask(void *argument)
 		}else{
 			taskENTER_CRITICAL();
 			// HAL_UART_Transmit(&huart2, (uint8_t *)&innerBuffer[seeker], sizeof(uint8_t),1);
-			if( xQueueSendToBack(SQHandle, &innerBuffer[seeker], 500) != pdPASS ) {}else {}
+			//if( xQueueSendToBack(SQHandle, &innerBuffer[seeker], 500) != pdPASS ) {}else {}
 		
 			if(innerBuffer[seeker] == termSign[0]){
+				int atInd, ledInd, timeInd;
+				
+				atInd = matchNextStr(innerBuffer, seeker, commandStart, 2);
+				if ( atInd != -1){
+					ledInd = matchNextStr(&innerBuffer[atInd], seeker, ledArgument, 3);
+					timeInd = matchNextStr(&innerBuffer[atInd], seeker, timeArgument, 4);
+					
+					if(ledInd != -1 ){
+						HAL_GPIO_TogglePin(GPIOB,PWR_PDCRB_PB3);
+					}else if (timeInd != -1){
+						vTaskResume(HandleRTCTimeHandle);
+					}else {
+						
+					}
+				}
+				
+				
 				/*
 				
 				if( xQueueSendToBack(SQHandle, &newLine[0], 500) != pdPASS ){
@@ -420,9 +465,10 @@ void StartDefaultTask(void *argument)
 			}else {
 				seeker++;
 			}
+			
 			taskEXIT_CRITICAL();
 		}
-		HAL_GPIO_TogglePin(GPIOB,PWR_PDCRB_PB3);
+		// HAL_GPIO_TogglePin(GPIOB,PWR_PDCRB_PB3);
     osDelay(1);
   }
 
@@ -575,7 +621,7 @@ void HandleRTCTimeFunc(void *argument)
   /* Infinite loop */
   for(;;)
   {
-		// vTaskSuspend(NULL);
+		vTaskSuspend(NULL);
 		//send seconds register address 00h to read from
 		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, secbuffer, 1, 10);
 		//read data of register 00h to secbuffer[1]
@@ -591,10 +637,9 @@ void HandleRTCTimeFunc(void *argument)
 		HAL_I2C_Master_Receive(&hi2c1, 0xD1, hourbuffer+1, 1, 10);
 		out[0] = hexToAscii((hourbuffer[1] >> 4)&0x1);
 		out[1] = hexToAscii(hourbuffer[1] & 0x0F);
+		
 		// transmit time to UART
 		HAL_UART_Transmit(&huart1,out, sizeof(out), 10);
-		
-    osDelay(1000);
   }
   /* USER CODE END HandleRTCTimeFunc */
 }
