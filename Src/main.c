@@ -42,6 +42,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart1;
 
 /* Definitions for defaultTask */
@@ -65,6 +67,13 @@ const osThreadAttr_t SendWifiAT_attributes = {
   .priority = (osPriority_t) osPriorityLow,
   .stack_size = 128 * 4
 };
+/* Definitions for HandleRTCTime */
+osThreadId_t HandleRTCTimeHandle;
+const osThreadAttr_t HandleRTCTime_attributes = {
+  .name = "HandleRTCTime",
+  .priority = (osPriority_t) osPriorityLow,
+  .stack_size = 128 * 4
+};
 /* Definitions for RQ */
 osMessageQueueId_t RQHandle;
 const osMessageQueueAttr_t RQ_attributes = {
@@ -82,10 +91,12 @@ const osMessageQueueAttr_t SQ_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 void StartDefaultTask(void *argument);
 void ReceiveWifiATFunc(void *argument);
 void SendWifiATFunc(void *argument);
+void HandleRTCTimeFunc(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -100,6 +111,14 @@ uint8_t s[16];
 uint8_t termSign[1] = ";";
 uint8_t orderSign[1] = "|";
 char newLine[2] = "\n\r";
+
+
+uint8_t hexToAscii(uint8_t n)//4-bit hex value converted to an ascii character
+{
+ if (n>=0 && n<=9) n = n + '0';
+ else n = n - 10 + 'A';
+ return n;
+}
 
 /* USER CODE END 0 */
 
@@ -131,6 +150,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 	__HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
@@ -172,6 +192,9 @@ int main(void)
 
   /* creation of SendWifiAT */
   SendWifiATHandle = osThreadNew(SendWifiATFunc, NULL, &SendWifiAT_attributes);
+
+  /* creation of HandleRTCTime */
+  HandleRTCTimeHandle = osThreadNew(HandleRTCTimeFunc, NULL, &HandleRTCTime_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -226,8 +249,9 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_I2C1;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
+  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -238,6 +262,52 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x00000E14;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Analogue filter 
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Digital filter 
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -443,6 +513,90 @@ void SendWifiATFunc(void *argument)
 		osDelay(1);
   }
   /* USER CODE END SendWifiATFunc */
+}
+
+/* USER CODE BEGIN Header_HandleRTCTimeFunc */
+/**
+* @brief Function implementing the HandleRTCTime thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_HandleRTCTimeFunc */
+void HandleRTCTimeFunc(void *argument)
+{
+  /* USER CODE BEGIN HandleRTCTimeFunc */
+  //Transmit via I2C
+	uint8_t secbuffer [2], minbuffer [2], hourbuffer [2];
+	// seconds
+	secbuffer[0] = 0x00; //register address
+	secbuffer[1] = 0x01; //data to put in register --> 0 sec
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, secbuffer, 2, 10);
+	// minutes
+	minbuffer[0] = 0x01; //register address
+	minbuffer[1] = 0x00; //data to put in register --> 15 min
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, minbuffer, 2, 10);
+	// hours
+	hourbuffer[0] = 0x02; //register address
+	hourbuffer[1] = 0x40; //data to put in register 0100 1001 --> 7 am
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, hourbuffer, 2, 10);
+	//Receive via I2C and forward to UART
+	uint8_t out[] = {0,0,':',0,0,':',0,0,'\r','\n'};
+	
+	/*
+	//setting the alarm
+	//Transmit via I2C
+	uint8_t alarmsecbuffer [2], alarmminbuffer [2], alarmhourbuffer [2], alaramdate[2], alarmcontrol[2], alarmstatus[2];
+	// seconds
+	alarmsecbuffer[0] = 0x07; //register address
+	alarmsecbuffer[1] = 0x00; //data to put in register --> 0 sec
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmsecbuffer, 2, 10);
+	// minutes
+	alarmminbuffer[0] = 0x08; //register address
+	alarmminbuffer[1] = 0x31; //data to put in register --> 15 min
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmminbuffer, 2, 10);
+	// hours
+	alarmhourbuffer[0] = 0x09; //register address
+	alarmhourbuffer[1] = 0x51; //data to put in register 0100 1001 --> 7 am
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmhourbuffer, 2, 10);
+	//date
+	alaramdate[0] = 0x0A; 
+	alaramdate[1] = 0x80; 
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alaramdate, 2, 10);
+	//control
+	alarmcontrol[0] = 0x0e;
+	alarmcontrol[1] = 0x1d;
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmcontrol, 2, 10);
+	//status
+	alarmstatus[0] = 0x0f;
+	alarmstatus[1] = 0x88;
+	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmstatus, 2, 10);
+	*/
+	
+  /* Infinite loop */
+  for(;;)
+  {
+		// vTaskSuspend(NULL);
+		//send seconds register address 00h to read from
+		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, secbuffer, 1, 10);
+		//read data of register 00h to secbuffer[1]
+		HAL_I2C_Master_Receive(&hi2c1, 0xD1, secbuffer+1, 1, 10);
+		//prepare UART output
+		out[6] = hexToAscii(secbuffer[1] >> 4 );
+		out[7] = hexToAscii(secbuffer[1] & 0x0F );
+		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, minbuffer, 1, 10);
+		HAL_I2C_Master_Receive(&hi2c1, 0xD1, minbuffer+1, 1, 10);
+		out[3] = hexToAscii(minbuffer[1] >> 4 );
+		out[4] = hexToAscii(minbuffer[1] & 0x0F );
+		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, hourbuffer, 1, 10);
+		HAL_I2C_Master_Receive(&hi2c1, 0xD1, hourbuffer+1, 1, 10);
+		out[0] = hexToAscii((hourbuffer[1] >> 4)&0x1);
+		out[1] = hexToAscii(hourbuffer[1] & 0x0F);
+		// transmit time to UART
+		HAL_UART_Transmit(&huart1,out, sizeof(out), 10);
+		
+    osDelay(1000);
+  }
+  /* USER CODE END HandleRTCTimeFunc */
 }
 
  /**
