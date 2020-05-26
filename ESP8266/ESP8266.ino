@@ -15,6 +15,8 @@ const long timeoutTime = 2000;
 String led3State = "On";
 String currentRTCReading = "00:00:00";
 
+String readJunk = "";
+
 void setup() {
   Serial.begin(115200);
 
@@ -44,6 +46,25 @@ void sendString(String str){
     }
   }
 
+
+void updateLedState(){
+  readJunk = Serial.readString();
+  sendString(";ATLED?;");
+  delay(20);
+  led3State = Serial.readString();
+  if (led3State!="On"){
+    led3State = "Off";
+    }
+  }
+
+void updateTime(){
+    readJunk = Serial.readString();
+    sendString(";ATTIME?;");
+    delay(20);
+    currentRTCReading = Serial.readString();
+  }
+
+
 void loop(){
   WiFiClient client = server.available();   // Listen for incoming clients
 
@@ -67,18 +88,14 @@ void loop(){
 
             // turns the GPIOs on and off
             if (header.indexOf("GET /led/on") >= 0) {
-              sendString(";ATLED;");
-              led3State = "On";
+              sendString(";ATLED=1;");
             } else if (header.indexOf("GET /led/off") >= 0) {
-              sendString(";ATLED;");
-              led3State = "Off";
+              sendString(";ATLED=0;");
             } else if (header.indexOf("GET /time/refresh") >= 0) {
-              //currentRTCReading = Serial.readString();
-              // delay(5);
-              sendString(";ATTIME;");
-              delay(20);
-              currentRTCReading = Serial.readString();
+              updateTime();
             }
+
+            updateLedState();
 
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");

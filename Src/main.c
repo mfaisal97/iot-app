@@ -114,7 +114,27 @@ uint8_t ledArgument[3] = "LED";
 uint8_t timeArgument[4] = "TIME";
 
 uint8_t orderSign[1] = "|";
+uint8_t querySign[1] = "?";
+uint8_t assignSign[1] = "=";
 char newLine[2] = "\n\r";
+
+uint8_t ledIsOn[2] = "On";
+uint8_t ledIsOff[3] = "Off";
+
+int getNextDigit(uint8_t* str, int sz, int* res){
+	int sign = 1;
+	for (int i = 0; i <= sz; i++){
+		if(str[i] == '-'){
+			sign = sign * -1;
+		}else if(str[i]>= '0' & str[i] <= '9'){
+			*res = sign*(str[i] - '0');
+			return i;
+		}else if(str[i] != ' ' && str[i] != '\t' && str[i] != '+'){
+			return -1;
+		}
+	}
+	return -1;
+}
 
 int matchNextStr(uint8_t* str, int sz, uint8_t* str2, int sz2){
 	for (int i = 0; i < sz2; i++){
@@ -428,18 +448,59 @@ void StartDefaultTask(void *argument)
 			// HAL_UART_Transmit(&huart2, (uint8_t *)&innerBuffer[seeker], sizeof(uint8_t),1);
 			//if( xQueueSendToBack(SQHandle, &innerBuffer[seeker], 500) != pdPASS ) {}else {}
 		
+			int baseInd = 0;
 			if(innerBuffer[seeker] == termSign[0]){
 				int atInd, ledInd, timeInd;
 				
-				atInd = matchNextStr(innerBuffer, seeker, commandStart, 2);
+				atInd = matchNextStr(innerBuffer, seeker - baseInd, commandStart, 2);
 				if ( atInd != -1){
-					ledInd = matchNextStr(&innerBuffer[atInd], seeker, ledArgument, 3);
-					timeInd = matchNextStr(&innerBuffer[atInd], seeker, timeArgument, 4);
+					baseInd = atInd;
+					ledInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, ledArgument, 3);
+					timeInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, timeArgument, 4);
 					
+					int queryInd, assignInd;
 					if(ledInd != -1 ){
-						HAL_GPIO_TogglePin(GPIOB,PWR_PDCRB_PB3);
+						baseInd = baseInd+ledInd;
+						queryInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, querySign, 1);
+						assignInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, assignSign, 1);
+						
+						if(queryInd!=-1){
+							int res = HAL_GPIO_ReadPin(GPIOB,PWR_PDCRB_PB3);
+							if (res){
+								HAL_UART_Transmit(&huart1, ledIsOn, sizeof(ledIsOn),1);
+							}else {
+								HAL_UART_Transmit(&huart1, ledIsOff, sizeof(ledIsOff),1);
+							}
+						}else if (assignInd != -1){
+							baseInd = baseInd + assignInd;
+							int newVal = 0;
+							int newValInd = getNextDigit(&innerBuffer[baseInd], seeker-baseInd, &newVal);
+							if (newValInd!=-1){
+								HAL_GPIO_WritePin(GPIOB, PWR_PDCRB_PB3, newVal);
+							}
+						}
+						
 					}else if (timeInd != -1){
-						vTaskResume(HandleRTCTimeHandle);
+						baseInd = baseInd+timeInd;
+						queryInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, querySign, 1);
+						assignInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, assignSign, 1);
+						
+						if(queryInd!=-1){
+							vTaskResume(HandleRTCTimeHandle);
+						}else if (assignInd != -1){
+							/*
+							baseInd = baseInd + assignInd;
+							int newVal = 0;
+							int newValInd = getNextDigit(&innerBuffer[baseInd], seeker-baseInd, &newVal);
+							if (newValInd!=-1){
+								HAL_GPIO_WritePin(GPIOB, PWR_PDCRB_PB3, newVal);
+							}
+							*/
+						}
+						
+						
+						
+						
 					}else {
 						
 					}
@@ -468,8 +529,13 @@ void StartDefaultTask(void *argument)
 			
 			taskEXIT_CRITICAL();
 		}
+		
+		if (seeker == 0){
+			osDelay(20);
+		}
+		
 		// HAL_GPIO_TogglePin(GPIOB,PWR_PDCRB_PB3);
-    osDelay(1);
+    // osDelay(1);
   }
 
   /* USER CODE END 5 */ 
