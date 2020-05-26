@@ -64,6 +64,24 @@ void updateTime(){
     currentRTCReading = Serial.readString();
   }
 
+String getTimeFromHeader(String str){
+  int timeStart = str.indexOf("set?time=");
+  int timeEnd = str.indexOf(" HTTP/1.1");
+
+  String tmStr = "00:00:00";
+
+  if (timeEnd - (timeStart + 9) == 12 && timeStart >=0 && timeEnd >=0 && timeStart <=20){
+      tmStr[0] = str[(timeStart + 9)];
+      tmStr[1] = str[(timeStart + 9)+1];
+      tmStr[3] = str[(timeStart + 9)+5];
+      tmStr[4] = str[(timeStart + 9)+6];
+      tmStr[6] = str[(timeStart + 9)+10];
+      tmStr[7] = str[(timeStart + 9)+11];
+    }
+
+    return tmStr;
+  }
+
 
 void loop(){
   WiFiClient client = server.available();   // Listen for incoming clients
@@ -93,6 +111,14 @@ void loop(){
               sendString(";ATLED=0;");
             } else if (header.indexOf("GET /time/refresh") >= 0) {
               updateTime();
+            }else if (header.indexOf("time/set") >= 0 && header.indexOf("time/set") <=20) {
+              sendString(";ATTIME=1");
+              sendString(getTimeFromHeader(header));
+              sendString(";");
+            }else if (header.indexOf("alarm/set") >= 0 && header.indexOf("alarm/set") <=20) {
+              sendString(";ATTIME=2");
+              sendString(getTimeFromHeader(header));
+              sendString(";");
             }
 
             updateLedState();
@@ -112,13 +138,32 @@ void loop(){
 
             client.println("<p>Current Led3 State " + led3State + "</p>");
             if (led3State=="Off") {
-              client.println("<p><a href=\"/led/on\"><button class=\"button\">TURN ON</button></a></p>");
+              client.println("<p><a href=\"/led/on\"><button class=\"button button2\">TURN ON</button></a></p>");
             } else {
-              client.println("<p><a href=\"/led/off\"><button class=\"button button2\">TURN OFF</button></a></p>");
+              client.println("<p><a href=\"/led/off\"><button class=\"button\">TURN OFF</button></a></p>");
             }
 
             client.println("<p>Current Time: " + currentRTCReading + "</p>");
+            client.println("<p><a href=\"/time/refresh\"><button class=\"button\">Refresh Time</button></a></p>");
+
+            client.println("<form name=\"input\" action=\"time/set\" method=\"get\">");
+            client.println("<label for=\"time\">Time:</label><br>");
+            client.println("<input name=\"time\" id=\"time\" />");
+            client.println("<input class=\"button\" type=\"submit\" value=\"Set time\" />");
+            client.println("</form>");
+
+             client.println("<form name=\"input\" action=\"alarm/set\" method=\"get\">");
+            client.println("<label for=\"time\">Alarm:</label><br>");
+            client.println("<input name=\"time\" id=\"time\" />");
+            client.println("<input class=\"button\" type=\"submit\" value=\"Set Alarm\" />");
+            client.println("</form>");
+
+
+            /*
+            client.println("<p>Current Time: " + currentRTCReading + "</p>");
             client.println("<p><a href=\"/time/refresh\"><button class=\"button button2\">Refresh Time</button></a></p>");
+            */
+
             client.println("</body></html>");
 
             client.println();

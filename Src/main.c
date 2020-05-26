@@ -121,6 +121,10 @@ char newLine[2] = "\n\r";
 uint8_t ledIsOn[2] = "On";
 uint8_t ledIsOff[3] = "Off";
 
+int timeParts[3] = {0,0,0};
+
+int RTCOp = 0;
+
 int getNextDigit(uint8_t* str, int sz, int* res){
 	int sign = 1;
 	for (int i = 0; i <= sz; i++){
@@ -486,21 +490,36 @@ void StartDefaultTask(void *argument)
 						assignInd = matchNextStr(&innerBuffer[baseInd], seeker - baseInd, assignSign, 1);
 						
 						if(queryInd!=-1){
+							RTCOp = 3;
 							vTaskResume(HandleRTCTimeHandle);
 						}else if (assignInd != -1){
-							/*
 							baseInd = baseInd + assignInd;
-							int newVal = 0;
-							int newValInd = getNextDigit(&innerBuffer[baseInd], seeker-baseInd, &newVal);
-							if (newValInd!=-1){
-								HAL_GPIO_WritePin(GPIOB, PWR_PDCRB_PB3, newVal);
+							int RTCOpInd = getNextDigit(&innerBuffer[baseInd], seeker-baseInd, &RTCOp);
+							
+							if (RTCOpInd != -1){
+								baseInd = baseInd + 1;
+								int a,b;
+								int aInd = 0, bInd = 0;
+								int done = 1;
+								
+								for (int i =0; i < 3; i++){
+									aInd = getNextDigit(&innerBuffer[baseInd], seeker-baseInd, &a);
+									bInd = getNextDigit(&innerBuffer[baseInd + 1], seeker - baseInd - 1, &b);
+									
+									if (aInd != -1 && bInd !=-1){
+										timeParts[i] = a*10 + b;
+										baseInd = baseInd + 1 + 1+1;
+									}else {
+										done = 0;
+										break;
+									}
+								}
+								
+								if (done){
+									vTaskResume(HandleRTCTimeHandle);
+								}
 							}
-							*/
 						}
-						
-						
-						
-						
 					}else {
 						
 					}
@@ -531,11 +550,8 @@ void StartDefaultTask(void *argument)
 		}
 		
 		if (seeker == 0){
-			osDelay(20);
+			osDelay(30);
 		}
-		
-		// HAL_GPIO_TogglePin(GPIOB,PWR_PDCRB_PB3);
-    // osDelay(1);
   }
 
   /* USER CODE END 5 */ 
@@ -558,22 +574,7 @@ void ReceiveWifiATFunc(void *argument)
 		vTaskSuspend(NULL);
 		taskENTER_CRITICAL();
 		vTaskSuspend(SendWifiATHandle);
-		
-		/*
-		HAL_UART_Transmit(&huart1, (uint8_t *)&newLine[0], sizeof(newLine),1);
-		HAL_UART_Transmit(&huart1, s, sizeof(s),1);
-		HAL_UART_Transmit(&huart1, (uint8_t *)&newLine[0], sizeof(newLine),1);
-		*/
-		/*
-		
-		if( xQueueSendToBack(RQHandle, s, 500) != pdPASS ) {
-		}else {
-			
-		}
-		*/
-		//HAL_UART_Transmit(&huart1, (uint8_t *)&s[0], sizeof(uint8_t),1);
-		//HAL_UART_Transmit(&huart1, (uint8_t *)&newLine[0], sizeof(newLine),1);
-		
+				
 		for (int i= 0; i < 16 ; i++){
 			if (s[i] != '\0'){
 				taskENTER_CRITICAL();
@@ -585,14 +586,6 @@ void ReceiveWifiATFunc(void *argument)
 				taskEXIT_CRITICAL();
 			}
 		}
-		
-		/*
-		if( xQueueSendToBack(RQHandle, &orderSign[0], 500) != pdPASS ) {
-				}else {
-					
-				}
-		*/
-		// HAL_UART_Transmit(&huart2, (uint8_t *)s, sizeof(s),1);
 		
 		vTaskResume(SendWifiATHandle);		
 		taskEXIT_CRITICAL();
@@ -649,63 +642,94 @@ void HandleRTCTimeFunc(void *argument)
 	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, minbuffer, 2, 10);
 	// hours
 	hourbuffer[0] = 0x02; //register address
-	hourbuffer[1] = 0x40; //data to put in register 0100 1001 --> 7 am
+	hourbuffer[1] = 0x00; //data to put in register 0100 1001 --> 7 am
 	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, hourbuffer, 2, 10);
 	//Receive via I2C and forward to UART
 	uint8_t out[] = {0,0,':',0,0,':',0,0,'\r','\n'};
 	
-	/*
-	//setting the alarm
-	//Transmit via I2C
+	
 	uint8_t alarmsecbuffer [2], alarmminbuffer [2], alarmhourbuffer [2], alaramdate[2], alarmcontrol[2], alarmstatus[2];
-	// seconds
-	alarmsecbuffer[0] = 0x07; //register address
-	alarmsecbuffer[1] = 0x00; //data to put in register --> 0 sec
-	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmsecbuffer, 2, 10);
-	// minutes
-	alarmminbuffer[0] = 0x08; //register address
-	alarmminbuffer[1] = 0x31; //data to put in register --> 15 min
-	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmminbuffer, 2, 10);
-	// hours
-	alarmhourbuffer[0] = 0x09; //register address
-	alarmhourbuffer[1] = 0x51; //data to put in register 0100 1001 --> 7 am
-	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmhourbuffer, 2, 10);
+	//register address
+	alarmsecbuffer[0] = 0x07;
+	alarmminbuffer[0] = 0x08;
+	alarmhourbuffer[0] = 0x09;
+	
 	//date
 	alaramdate[0] = 0x0A; 
 	alaramdate[1] = 0x80; 
-	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alaramdate, 2, 10);
 	//control
 	alarmcontrol[0] = 0x0e;
 	alarmcontrol[1] = 0x1d;
-	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmcontrol, 2, 10);
 	//status
 	alarmstatus[0] = 0x0f;
 	alarmstatus[1] = 0x88;
-	HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmstatus, 2, 10);
-	*/
-	
+		
   /* Infinite loop */
   for(;;)
   {
 		vTaskSuspend(NULL);
-		//send seconds register address 00h to read from
-		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, secbuffer, 1, 10);
-		//read data of register 00h to secbuffer[1]
-		HAL_I2C_Master_Receive(&hi2c1, 0xD1, secbuffer+1, 1, 10);
-		//prepare UART output
-		out[6] = hexToAscii(secbuffer[1] >> 4 );
-		out[7] = hexToAscii(secbuffer[1] & 0x0F );
-		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, minbuffer, 1, 10);
-		HAL_I2C_Master_Receive(&hi2c1, 0xD1, minbuffer+1, 1, 10);
-		out[3] = hexToAscii(minbuffer[1] >> 4 );
-		out[4] = hexToAscii(minbuffer[1] & 0x0F );
-		HAL_I2C_Master_Transmit(&hi2c1, 0xD0, hourbuffer, 1, 10);
-		HAL_I2C_Master_Receive(&hi2c1, 0xD1, hourbuffer+1, 1, 10);
-		out[0] = hexToAscii((hourbuffer[1] >> 4)&0x1);
-		out[1] = hexToAscii(hourbuffer[1] & 0x0F);
 		
-		// transmit time to UART
-		HAL_UART_Transmit(&huart1,out, sizeof(out), 10);
+		if (RTCOp == 1 || RTCOp == 2){
+			secbuffer[1] = timeParts[2] % 10;
+			secbuffer[1] = secbuffer[1] + timeParts[2] / 10 * 16;
+			
+			minbuffer[1] = timeParts[1] % 10;
+			minbuffer[1] = minbuffer[1] + timeParts[1] / 10 * 16;
+			
+			/*
+			if(timeParts[0] > 12){
+				hourbuffer[1] = 0x60;
+				timeParts[0] = timeParts[0] - 12;
+			}else {
+				hourbuffer[1] = 0x40;
+			}
+			*/
+			
+			
+			hourbuffer[1] = 0 + timeParts[0] % 10;
+			hourbuffer[1] = hourbuffer[1] + timeParts[0] / 10 * 16;
+			
+		}
+		
+		if (RTCOp == 1){
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, secbuffer, 2, 10);
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, minbuffer, 2, 10);
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, hourbuffer, 2, 10);
+		}else if (RTCOp == 2){
+			
+			alarmsecbuffer[1] = secbuffer[1];
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmsecbuffer, 2, 10);
+
+			alarmminbuffer[1] = minbuffer[1];
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmminbuffer, 2, 10);
+			
+			alarmhourbuffer[1] = hourbuffer[1];
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmhourbuffer, 2, 10);
+			
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alaramdate, 2, 10);
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmcontrol, 2, 10);
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, alarmstatus, 2, 10);			
+			
+		}else if (RTCOp == 3){
+			//send seconds register address 00h to read from
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, secbuffer, 1, 10);
+			//read data of register 00h to secbuffer[1]
+			HAL_I2C_Master_Receive(&hi2c1, 0xD1, secbuffer+1, 1, 10);
+			//prepare UART output
+			out[6] = hexToAscii(secbuffer[1] >> 4 );
+			out[7] = hexToAscii(secbuffer[1] & 0x0F );
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, minbuffer, 1, 10);
+			HAL_I2C_Master_Receive(&hi2c1, 0xD1, minbuffer+1, 1, 10);
+			out[3] = hexToAscii(minbuffer[1] >> 4 );
+			out[4] = hexToAscii(minbuffer[1] & 0x0F );
+			HAL_I2C_Master_Transmit(&hi2c1, 0xD0, hourbuffer, 1, 10);
+			HAL_I2C_Master_Receive(&hi2c1, 0xD1, hourbuffer+1, 1, 10);
+			out[0] = hexToAscii((hourbuffer[1] >> 4)&0x7);
+			out[1] = hexToAscii(hourbuffer[1] & 0x0F);
+			
+			// transmit time to UART
+			HAL_UART_Transmit(&huart1,out, sizeof(out), 10);			
+		}
   }
   /* USER CODE END HandleRTCTimeFunc */
 }
